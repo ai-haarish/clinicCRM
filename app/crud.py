@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 from . import models, schemas
+from fastapi import HTTPException
 
 #crud create doctor
 def create_doctor(db: Session, doctor: schemas.DoctorCreate):
@@ -51,6 +52,69 @@ def get_patients(db: Session):
 
 #crud create appointment
 def create_appointment(db: Session, appointment: schemas.AppointmentCreate):
+    #check patient
+    patient = (
+    db.query(models.Patient)
+    .filter(models.Patient.id == appointment.patient_id)
+    .first()
+)
+
+    if not patient:
+        raise HTTPException(
+        status_code=404,
+        detail="Patient not found"
+    )
+    #Check Doctor    
+    doctor = (
+    db.query(models.Doctor)
+    .filter(models.Doctor.id == appointment.doctor_id)
+    .first()
+)
+
+    if not doctor:
+        raise HTTPException(
+            status_code=404,
+            detail="Doctor not found"
+    )
+    existing_appointment = (
+    db.query(models.Appointment)
+    .filter(
+        models.Appointment.doctor_id == appointment.doctor_id,
+        models.Appointment.appointment_date == appointment.appointment_date,
+        models.Appointment.appointment_time == appointment.appointment_time
+    )
+    .first()
+)
+
+    if existing_appointment:
+        raise HTTPException(
+            status_code=400,
+            detail="This appointment slot is already booked."
+    )
+        
+    schedule = (
+    db.query(models.DoctorSchedule)
+    .filter(
+        models.DoctorSchedule.doctor_id == appointment.doctor_id,
+        models.DoctorSchedule.date == appointment.appointment_date
+    )
+    .first()
+)
+
+    if not schedule:
+        raise HTTPException(
+            status_code=400,
+            detail="Doctor is not available on this date."
+    )
+    if (
+    appointment.appointment_time < schedule.start_time
+    or
+    appointment.appointment_time > schedule.end_time
+):
+        raise HTTPException(
+        status_code=400,
+        detail="Appointment time is outside the doctor's working hours."
+    )   
     db_appointment = models.Appointment(**appointment.model_dump())
     db.add(db_appointment)
     db.commit()
@@ -59,3 +123,101 @@ def create_appointment(db: Session, appointment: schemas.AppointmentCreate):
 #crud get appointment
 def get_appointment(db: Session):
     return db.query(models.Appointment).all()
+
+#CANCEL APPOINTMENT
+def cancel_appointment(db: Session, appointment_id: int):
+
+    appointment = (
+        db.query(models.Appointment)
+        .filter(models.Appointment.id == appointment_id)
+        .first()
+    )
+
+    if not appointment:
+        raise HTTPException(
+            status_code=404,
+            detail="Appointment not found"
+        )
+
+    if appointment.status == "Cancelled":
+        raise HTTPException(
+            status_code=400,
+            detail="Appointment is already cancelled"
+        )
+
+    appointment.status = "Cancelled"
+
+    db.commit()
+    db.refresh(appointment)
+
+    return appointment
+
+def reschedule_appointment(
+    db: Session,
+    appointment_id: int,
+    new_data: schemas.AppointmentReschedule
+):
+    appointment = (
+    db.query(models.Appointment)
+    .filter(models.Appointment.id == appointment_id)
+    .first()
+)
+
+    if not appointment:
+        raise HTTPException(
+        status_code=404,
+        detail="Appointment not found"
+    )
+    if appointment.status == "Cancelled":
+        raise HTTPException(
+        status_code=400,
+        detail="Cancelled appointments cannot be rescheduled."
+    )
+        
+    schedule = (
+    db.query(models.DoctorSchedule)
+    .filter(
+        models.DoctorSchedule.doctor_id == appointment.doctor_id,
+        models.DoctorSchedule.date == new_data.appointment_date
+    )
+    .first()
+)
+
+    if not schedule:
+        raise HTTPException(
+        status_code=400,
+        detail="Doctor is not available on this date."
+    )
+    
+    if (
+    new_data.appointment_time < schedule.start_time
+    or
+    new_data.appointment_time > schedule.end_time
+):
+        raise HTTPException(
+        status_code=400,
+        detail="Appointment time is outside the doctor's working hours."
+    )
+    existing_appointment = (
+    db.query(models.Appointment)
+    .filter(
+        models.Appointment.doctor_id == appointment.doctor_id,
+        models.Appointment.appointment_date == new_data.appointment_date,
+        models.Appointment.appointment_time == new_data.appointment_time,
+        models.Appointment.id != appointment_id
+    )
+    .first()
+)
+
+    if existing_appointment:
+        raise HTTPException(
+        status_code=400,
+        detail="This appointment slot is already booked."
+    )
+    appointment.appointment_date = new_data.appointment_date
+    appointment.appointment_time = new_data.appointment_time
+
+    db.commit()
+    db.refresh(appointment)
+
+    return appointment

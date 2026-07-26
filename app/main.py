@@ -70,3 +70,26 @@ def get_appointments(
     db: Session = Depends(get_db)
 ):
     return crud.get_appointment(db)
+
+@app.put("/appointments/{appointment_id}/cancel",
+         response_model=schemas.AppointmentResponse)
+def cancel_appointment(
+    appointment_id: int,
+    db: Session = Depends(get_db)
+):
+    return crud.cancel_appointment(db, appointment_id)
+
+@app.put(
+    "/appointments/{appointment_id}/reschedule",
+    response_model=schemas.AppointmentResponse
+)
+def reschedule_appointment(
+    appointment_id: int,
+    new_data: schemas.AppointmentReschedule,
+    db: Session = Depends(get_db)
+):
+    return crud.reschedule_appointment(
+        db,
+        appointment_id,
+        new_data
+    )

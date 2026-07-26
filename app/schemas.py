@@ -46,9 +46,13 @@ class AppointmentCreate(BaseModel):
     doctor_id: int
     appointment_date: date
     appointment_time: time
-    status: str
     
 class AppointmentResponse(AppointmentCreate):
     id: int
+    status: str
     class Config:
         from_attributes = True
+
+class AppointmentReschedule(BaseModel):
+    appointment_date: date
+    appointment_time: time
